@@ -1,0 +1,195 @@
+import { useState, useEffect } from 'react';
+import { C } from './constants.js';
+import { uid, getStatus } from './utils.js';
+import { supabase } from './supabase.js';
+import PartCard      from './components/PartCard.jsx';
+import TxModal       from './components/TxModal.jsx';
+import HistModal     from './components/HistModal.jsx';
+import NewPartView   from './components/NewPartView.jsx';
+import ConfirmDialog from './components/ConfirmDialog.jsx';
+import { EmptyState, SectionTitle } from './components/ui.jsx';
+
+const TABS = [
+  { id:'inventory', label:'📦 Parts'   },
+  { id:'log',       label:'📋 Log'     },
+  { id:'alerts',    label:'⚠️ Alerts'  },
+  { id:'addpart',   label:'➕ New Part' },
+];
+
+export default function App() {
+  const [parts,        setParts]        = useState([]);
+  const [txns,         setTxns]         = useState([]);
+  const [tab,          setTab]          = useState('inventory');
+  const [search,       setSearch]       = useState('');
+  const [loading,      setLoading]      = useState(true);
+  const [txModal,      setTxModal]      = useState(null);
+  const [histModal,    setHistModal]    = useState(null);
+  const [deleteTarget, setDeleteTarget] = useState(null);
+
+  useEffect(() => {
+    async function loadData() {
+      setLoading(true);
+      const [{ data: partsData }, { data: txnsData }] = await Promise.all([
+        supabase.from('parts').select('*').order('added_date', { ascending: false }),
+        supabase.from('transactions').select('*').order('date', { ascending: false }),
+      ]);
+      setParts((partsData || []).map(dbToPart));
+      setTxns((txnsData  || []).map(dbToTxn));
+      setLoading(false);
+    }
+    loadData();
+  }, []);
+
+  function dbToPart(row) {
+    return {
+      id:            row.id,
+      name:          row.name,
+      sku:           row.sku            || '',
+      qty:           row.qty            || 0,
+      unit:          row.unit           || 'pcs',
+      lowLevel:      row.low_level      || 10,
+      criticalLevel: row.critical_level || 5,
+      location:      row.location       || '',
+      notes:         row.notes          || '',
+      addedDate:     row.added_date     || '',
+    };
+  }
+
+  function dbToTxn(row) {
+    return {
+      id:       row.id,
+      partId:   row.part_id,
+      partName: row.part_name,
+      type:     row.type,
+      qty:      row.qty,
+      date:     row.date,
+      reason:   row.reason || '',
+    };
+  }
+
+  function partToDb(part) {
+    return {
+      id:             part.id,
+      name:           part.name,
+      sku:            part.sku,
+      qty:            part.qty,
+      unit:           part.unit,
+      low_level:      part.lowLevel,
+      critical_level: part.criticalLevel,
+      location:       part.location,
+      notes:          part.notes,
+      added_date:     part.addedDate,
+    };
+  }
+
+  function txnToDb(txn) {
+    return {
+      id:        txn.id,
+      part_id:   txn.partId,
+      part_name: txn.partName,
+      type:      txn.type,
+      qty:       txn.qty,
+      date:      txn.date,
+      reason:    txn.reason,
+    };
+  }
+
+  async function handleTxConfirm({ qty, date, reason }) {
+    const { part, type } = txModal;
+    const delta  = type === 'add' ? qty : -qty;
+    const newQty = Math.max(0, part.qty + delta);
+    const newTxn = { id:uid(), partId:part.id, partName:part.name, type, qty, date, reason };
+    setParts(ps => ps.map(p => p.id===part.id ? {...p, qty:newQty} : p));
+    setTxns(ts => [newTxn, ...ts]);
+    setTxModal(null);
+    await Promise.all([
+      supabase.from('parts').update({ qty: newQty }).eq('id', part.id),
+      supabase.from('transactions').insert(txnToDb(newTxn)),
+    ]);
+  }
+
+  async function handleAddPart(data) {
+    const id      = uid();
+    const newPart = { id, ...data };
+    const newTxn  = data.qty > 0
+      ? { id:uid(), partId:id, partName:data.name, type:'add', qty:data.qty, date:data.addedDate, reason:'Initial stock' }
+      : null;
+    setParts(ps => [newPart, ...ps]);
+    if (newTxn) setTxns(ts => [newTxn, ...ts]);
+    setTab('inventory');
+    await supabase.from('parts').insert(partToDb(newPart));
+    if (newTxn) await supabase.from('transactions').insert(txnToDb(newTxn));
+  }
+
+  async function confirmDelete() {
+    const id = deleteTarget.id;
+    setParts(ps => ps.filter(p => p.id !== id));
+    setTxns(ts => ts.filter(t => t.partId !== id));
+    setDeleteTarget(null);
+    await supabase.from('parts').delete().eq('id', id);
+  }
+
+  const q             = search.toLowerCase().trim();
+  const filtered      = parts.filter(p =>
+    p.name.toLowerCase().includes(q) ||
+    (p.sku      || '').toLowerCase().includes(q) ||
+    (p.location || '').toLowerCase().includes(q)
+  );
+  const lowParts      = parts.filter(p => getStatus(p) === 'low');
+  const criticalParts = parts.filter(p => getStatus(p) === 'critical');
+  const alertParts    = [...criticalParts.map(p=>({...p,_st:'critical'})), ...lowParts.map(p=>({...p,_st:'low'}))];
+  const totalUnits    = parts.reduce((s, p) => s + p.qty, 0);
+  const sortedTxns    = [...txns].sort((a,b) => b.date.localeCompare(a.date)||b.id.localeCompare(a.id));
+
+  if (loading) {
+    return (
+      <div style={{ background:C.bg, minHeight:'100vh', display:'flex', alignItems:'center',
+        justifyContent:'center', flexDirection:'column', gap:16, color:C.muted, fontFamily:'system-ui,sans-serif' }}>
+        <div style={{ fontSize:32 }}>📦</div>
+        <div style={{ fontSize:14 }}>Loading inventory…</div>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ background:C.bg, minHeight:'100vh', color:C.text, fontFamily:'system-ui,sans-serif', fontSize:15, paddingBottom:60 }}>
+      <div style={{ background:C.surface, borderBottom:`2px solid ${C.accent}`, padding:'12px 16px',
+        display:'flex', alignItems:'center', justifyContent:'space-between', position:'sticky', top:0, zIndex:100 }}>
+        <div>
+          <div style={{ fontSize:17, fontWeight:800 }}>Zadik <span style={{color:C.accent}}>Precision</span></div>
+          <div style={{ fontSize:9, letterSpacing:2, textTransform:'uppercase', color:C.muted, marginTop:1 }}>LLC — Inventory Control</div>
+        </div>
+        <div style={{ fontFamily:'monospace', fontSize:11, color:C.muted, textAlign:'right' }}>
+          <div><b style={{color:C.accent}}>{parts.length}</b> parts</div>
+          <div><b style={{color:C.accent}}>{txns.length}</b> transactions</div>
+        </div>
+      </div>
+      <div style={{ display:'flex', background:C.surface, borderBottom:`1px solid ${C.border}`, overflowX:'auto', position:'sticky', top:57, zIndex:99 }}>
+        {TABS.map(t => (
+          <div key={t.id} onClick={()=>setTab(t.id)}
+            style={{ flex:1, padding:'11px 8px', textAlign:'center', fontSize:11, fontWeight:700,
+              cursor:'pointer', whiteSpace:'nowrap', userSelect:'none',
+              color: tab===t.id ? C.accent : C.muted,
+              borderBottom: tab===t.id ? `2px solid ${C.accent}` : '2px solid transparent' }}>
+            {t.label}
+          </div>
+        ))}
+      </div>
+      {tab==='inventory' && (
+        <div style={{padding:14}}>
+          <div style={{position:'relative',marginBottom:12}}>
+            <span style={{position:'absolute',left:11,top:'50%',transform:'translateY(-50%)',color:C.muted,pointerEvents:'none'}}>🔍</span>
+            <input style={{width:'100%',padding:'10px 12px 10px 34px',background:C.surface2,border:`1px solid ${C.border}`,
+              borderRadius:8,color:C.text,fontSize:14,outline:'none',boxSizing:'border-box'}}
+              placeholder="Search by name, part #, or location…" value={search} onChange={e=>setSearch(e.target.value)} />
+          </div>
+          {filtered.length===0
+            ? <EmptyState icon="📦">{parts.length ? 'No results.' : 'No parts yet. Go to ➕ New Part to start.'}</EmptyState>
+            : filtered.map(p => <PartCard key={p.id} part={p}
+                onAdd={p=>setTxModal({part:p,type:'add'})} onRemove={p=>setTxModal({part:p,type:'remove'})}
+                onHistory={p=>setHistModal(p)} onDelete={p=>setDeleteTarget(p)} />)
+          }
+        </div>
+      )}
+      {tab==='log' && (
+        <div style={{padding:14}}>
