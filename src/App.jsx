@@ -7,6 +7,7 @@ import TxModal       from './components/TxModal.jsx';
 import HistModal     from './components/HistModal.jsx';
 import NewPartView   from './components/NewPartView.jsx';
 import ConfirmDialog from './components/ConfirmDialog.jsx';
+import CategoryView  from './components/CategoryView.jsx';
 import { EmptyState, SectionTitle } from './components/ui.jsx';
 
 const TABS = [
@@ -19,6 +20,7 @@ const TABS = [
 export default function App() {
   const [parts,        setParts]        = useState([]);
   const [txns,         setTxns]         = useState([]);
+  const [categories,   setCategories]   = useState([]);
   const [tab,          setTab]          = useState('inventory');
   const [search,       setSearch]       = useState('');
   const [loading,      setLoading]      = useState(true);
@@ -29,12 +31,14 @@ export default function App() {
   useEffect(() => {
     async function loadData() {
       setLoading(true);
-      const [{ data: partsData }, { data: txnsData }] = await Promise.all([
-        supabase.from('parts').select('*').order('added_date', { ascending: false }),
+      const [{ data: partsData }, { data: txnsData }, { data: catsData }] = await Promise.all([
+        supabase.from('parts').select('*').order('position', { ascending: true }),
         supabase.from('transactions').select('*').order('date', { ascending: false }),
+        supabase.from('categories').select('*').order('position', { ascending: true }),
       ]);
       setParts((partsData || []).map(dbToPart));
       setTxns((txnsData  || []).map(dbToTxn));
+      setCategories(catsData || []);
       setLoading(false);
     }
     loadData();
@@ -52,6 +56,8 @@ export default function App() {
       location:      row.location       || '',
       notes:         row.notes          || '',
       addedDate:     row.added_date     || '',
+      categoryId:    row.category_id    || null,
+      position:      row.position       || 0,
     };
   }
 
@@ -79,6 +85,8 @@ export default function App() {
       location:       part.location,
       notes:          part.notes,
       added_date:     part.addedDate,
+      category_id:    part.categoryId || null,
+      position:       part.position   || 0,
     };
   }
 
@@ -110,7 +118,7 @@ export default function App() {
 
   async function handleAddPart(data) {
     const id      = uid();
-    const newPart = { id, ...data };
+    const newPart = { id, ...data, position: parts.length };
     const newTxn  = data.qty > 0
       ? { id:uid(), partId:id, partName:data.name, type:'add', qty:data.qty, date:data.addedDate, reason:'Initial stock' }
       : null;
@@ -127,6 +135,31 @@ export default function App() {
     setTxns(ts => ts.filter(t => t.partId !== id));
     setDeleteTarget(null);
     await supabase.from('parts').delete().eq('id', id);
+  }
+
+  async function handleAddCategory(cat) {
+    setCategories(cs => [...cs, cat]);
+    await supabase.from('categories').insert(cat);
+  }
+
+  async function handleDeleteCategory(catId) {
+    setCategories(cs => cs.filter(c => c.id !== catId));
+    setParts(ps => ps.map(p => p.categoryId === catId ? {...p, categoryId: null} : p));
+    await supabase.from('categories').delete().eq('id', catId);
+    await supabase.from('parts').update({ category_id: null }).eq('category_id', catId);
+  }
+
+  async function handleReorderCategories(reordered) {
+    setCategories(reordered);
+    await Promise.all(reordered.map(c => supabase.from('categories').update({ position: c.position }).eq('id', c.id)));
+  }
+
+  async function handleReorderParts(reorderedParts) {
+    setParts(ps => {
+      const ids = new Set(reorderedParts.map(p => p.id));
+      return [...ps.filter(p => !ids.has(p.id)), ...reorderedParts];
+    });
+    await Promise.all(reorderedParts.map(p => supabase.from('parts').update({ position: p.position }).eq('id', p.id)));
   }
 
   const q             = search.toLowerCase().trim();
@@ -175,44 +208,65 @@ export default function App() {
           </div>
         ))}
       </div>
+
       {tab==='inventory' && (
-        <div style={{padding:14}}>
-          <div style={{position:'relative',marginBottom:12}}>
-            <span style={{position:'absolute',left:11,top:'50%',transform:'translateY(-50%)',color:C.muted,pointerEvents:'none'}}>🔍</span>
-            <input style={{width:'100%',padding:'10px 12px 10px 34px',background:C.surface2,border:`1px solid ${C.border}`,
-              borderRadius:8,color:C.text,fontSize:14,outline:'none',boxSizing:'border-box'}}
-              placeholder="Search by name, part #, or location…" value={search} onChange={e=>setSearch(e.target.value)} />
+        <div>
+          <div style={{ padding:'14px 14px 0' }}>
+            <div style={{position:'relative',marginBottom:12}}>
+              <span style={{position:'absolute',left:11,top:'50%',transform:'translateY(-50%)',color:C.muted,pointerEvents:'none'}}>🔍</span>
+              <input style={{width:'100%',padding:'10px 12px 10px 34px',background:C.surface2,border:`1px solid ${C.border}`,
+                borderRadius:8,color:C.text,fontSize:14,outline:'none',boxSizing:'border-box'}}
+                placeholder="Search by name, part #, or location…" value={search} onChange={e=>setSearch(e.target.value)} />
+            </div>
           </div>
-          {filtered.length===0
-            ? <EmptyState icon="📦">{parts.length ? 'No results.' : 'No parts yet. Go to ➕ New Part to start.'}</EmptyState>
-            : filtered.map(p => <PartCard key={p.id} part={p}
-                onAdd={p=>setTxModal({part:p,type:'add'})} onRemove={p=>setTxModal({part:p,type:'remove'})}
-                onHistory={p=>setHistModal(p)} onDelete={p=>setDeleteTarget(p)} />)
-          }
+          {search.trim() ? (
+            <div style={{padding:'0 14px'}}>
+              {filtered.length===0
+                ? <EmptyState icon="📦">No results.</EmptyState>
+                : filtered.map(p => <PartCard key={p.id} part={p}
+                    onAdd={p=>setTxModal({part:p,type:'add'})} onRemove={p=>setTxModal({part:p,type:'remove'})}
+                    onHistory={p=>setHistModal(p)} onDelete={p=>setDeleteTarget(p)} />)
+              }
+            </div>
+          ) : (
+            <CategoryView
+              categories={categories}
+              parts={parts}
+              onAddCategory={handleAddCategory}
+              onDeleteCategory={handleDeleteCategory}
+              onReorderCategories={handleReorderCategories}
+              onReorderParts={handleReorderParts}
+              onAdd={p=>setTxModal({part:p,type:'add'})}
+              onRemove={p=>setTxModal({part:p,type:'remove'})}
+              onHistory={p=>setHistModal(p)}
+              onDelete={p=>setDeleteTarget(p)}
+            />
+          )}
         </div>
       )}
+
       {tab==='log' && (
         <div style={{padding:14}}>
           <SectionTitle>Transaction Log</SectionTitle>
-          {sortedTxns.length===0
-            ? <EmptyState icon="📋">No transactions yet.</EmptyState>
+          {sortedTxns.length===0 ? <EmptyState icon="📋">No transactions yet.</EmptyState>
             : sortedTxns.map(t => {
-                const isAdd = t.type==='add';
-                return (
-                  <div key={t.id} style={{display:'flex',alignItems:'center',gap:10,padding:'9px 0',borderBottom:`1px solid ${C.border}`}}>
-                    <div style={{width:30,height:30,borderRadius:7,display:'flex',alignItems:'center',justifyContent:'center',
-                      fontSize:14,flexShrink:0,background:isAdd?'rgba(61,224,138,.14)':'rgba(224,58,58,.14)'}}>{isAdd?'↑':'↓'}</div>
-                    <div style={{flex:1,minWidth:0}}>
-                      <div style={{fontSize:13,fontWeight:600,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{t.partName}</div>
-                      <div style={{fontFamily:'monospace',fontSize:10,color:C.muted}}>{t.date}{t.reason?' · '+t.reason:''}</div>
-                    </div>
-                    <div style={{fontFamily:'monospace',fontWeight:500,fontSize:14,color:isAdd?C.green:C.red}}>{isAdd?'+':'-'}{t.qty}</div>
+              const isAdd = t.type==='add';
+              return (
+                <div key={t.id} style={{display:'flex',alignItems:'center',gap:10,padding:'9px 0',borderBottom:`1px solid ${C.border}`}}>
+                  <div style={{width:30,height:30,borderRadius:7,display:'flex',alignItems:'center',justifyContent:'center',
+                    fontSize:14,flexShrink:0,background:isAdd?'rgba(61,224,138,.14)':'rgba(224,58,58,.14)'}}>{isAdd?'↑':'↓'}</div>
+                  <div style={{flex:1,minWidth:0}}>
+                    <div style={{fontSize:13,fontWeight:600,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{t.partName}</div>
+                    <div style={{fontFamily:'monospace',fontSize:10,color:C.muted}}>{t.date}{t.reason?' · '+t.reason:''}</div>
                   </div>
-                );
-              })
+                  <div style={{fontFamily:'monospace',fontWeight:500,fontSize:14,color:isAdd?C.green:C.red}}>{isAdd?'+':'-'}{t.qty}</div>
+                </div>
+              );
+            })
           }
         </div>
       )}
+
       {tab==='alerts' && (
         <div style={{padding:14}}>
           <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8,marginBottom:14}}>
@@ -226,8 +280,7 @@ export default function App() {
             ))}
           </div>
           <SectionTitle>Stock Alerts</SectionTitle>
-          {alertParts.length===0
-            ? <EmptyState icon="✅">All stock levels are healthy.</EmptyState>
+          {alertParts.length===0 ? <EmptyState icon="✅">All stock levels are healthy.</EmptyState>
             : alertParts.map(p => (
               <div key={p.id} style={{display:'flex',alignItems:'center',gap:9,padding:'9px 12px',marginBottom:7,borderRadius:8,
                 background:p._st==='critical'?'rgba(224,58,58,.07)':'rgba(232,160,32,.07)',
@@ -247,7 +300,9 @@ export default function App() {
           }
         </div>
       )}
-      {tab==='addpart' && <NewPartView onAdd={handleAddPart} />}
+
+      {tab==='addpart' && <NewPartView onAdd={handleAddPart} categories={categories} />}
+
       {txModal   && <TxModal   part={txModal.part} type={txModal.type} onClose={()=>setTxModal(null)}   onConfirm={handleTxConfirm} />}
       {histModal && <HistModal part={histModal}     txns={txns}         onClose={()=>setHistModal(null)} />}
       {deleteTarget && (
