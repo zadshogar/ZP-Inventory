@@ -7,29 +7,40 @@ const headers = {
   'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
 };
 
+async function req(url, options = {}) {
+  const r = await fetch(url, { ...options, headers: {...headers, ...(options.headers||{})} });
+  const text = await r.text();
+  let data = null;
+  try { data = JSON.parse(text); } catch { data = text; }
+  if (!r.ok) {
+    alert('Supabase error: ' + JSON.stringify(data));
+    return { data: null, error: data };
+  }
+  return { data: Array.isArray(data) ? data : [], error: null };
+}
+
 export const supabase = {
   from: (table) => ({
     select: (cols = '*') => ({
-      order: (col, opts = {}) => fetch(
-        `${SUPABASE_URL}/rest/v1/${table}?select=${cols}&order=${col}.${opts.ascending===false?'desc':'asc'}`,
-        { headers }
-      ).then(r => r.json()).then(data => ({ data: Array.isArray(data) ? data : [], error: data.error||null })),
+      order: (col, opts = {}) => req(
+        `${SUPABASE_URL}/rest/v1/${table}?select=${cols}&order=${col}.${opts.ascending===false?'desc':'asc'}`
+      ),
     }),
-    insert: (row) => fetch(
+    insert: (row) => req(
       `${SUPABASE_URL}/rest/v1/${table}`,
-      { method:'POST', headers: {...headers, 'Prefer':'return=minimal'}, body: JSON.stringify(row) }
-    ).then(r => ({ error: r.ok ? null : r.statusText })),
+      { method:'POST', headers:{'Prefer':'return=minimal'}, body: JSON.stringify(row) }
+    ),
     update: (changes) => ({
-      eq: (col, val) => fetch(
+      eq: (col, val) => req(
         `${SUPABASE_URL}/rest/v1/${table}?${col}=eq.${val}`,
-        { method:'PATCH', headers: {...headers, 'Prefer':'return=minimal'}, body: JSON.stringify(changes) }
-      ).then(r => ({ error: r.ok ? null : r.statusText })),
+        { method:'PATCH', headers:{'Prefer':'return=minimal'}, body: JSON.stringify(changes) }
+      ),
     }),
     delete: () => ({
-      eq: (col, val) => fetch(
+      eq: (col, val) => req(
         `${SUPABASE_URL}/rest/v1/${table}?${col}=eq.${val}`,
-        { method:'DELETE', headers }
-      ).then(r => ({ error: r.ok ? null : r.statusText })),
+        { method:'DELETE' }
+      ),
     }),
   }),
 };
