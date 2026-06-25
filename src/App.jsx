@@ -73,23 +73,6 @@ export default function App() {
     };
   }
 
-  function partToDb(part) {
-    return {
-      id:             part.id,
-      name:           part.name,
-      sku:            part.sku,
-      qty:            part.qty,
-      unit:           part.unit,
-      low_level:      part.lowLevel,
-      critical_level: part.criticalLevel,
-      location:       part.location,
-      notes:          part.notes,
-      added_date:     part.addedDate,
-      category_id:    part.categoryId || null,
-      position:       part.position   || 0,
-    };
-  }
-
   function txnToDb(txn) {
     return {
       id:        txn.id,
@@ -125,7 +108,20 @@ export default function App() {
     setParts(ps => [newPart, ...ps]);
     if (newTxn) setTxns(ts => [newTxn, ...ts]);
     setTab('inventory');
-    await supabase.from('parts').insert(partToDb(newPart));
+    await supabase.from('parts').insert({
+      id:             newPart.id,
+      name:           newPart.name,
+      sku:            newPart.sku,
+      qty:            newPart.qty,
+      unit:           newPart.unit,
+      low_level:      newPart.lowLevel,
+      critical_level: newPart.criticalLevel,
+      location:       newPart.location,
+      notes:          newPart.notes,
+      added_date:     newPart.addedDate,
+      category_id:    newPart.categoryId || null,
+      position:       newPart.position   || 0,
+    });
     if (newTxn) await supabase.from('transactions').insert(txnToDb(newTxn));
   }
 
