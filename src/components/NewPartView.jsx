@@ -1,10 +1,11 @@
+
 import { useState } from 'react';
 import { C } from '../constants.js';
 import { today } from '../utils.js';
 import { Input, Field, ErrorBanner } from './ui.jsx';
 
-export default function NewPartView({ onAdd }) {
-  const blank = { name:'', sku:'', qty:'', unit:'', lowLevel:'', criticalLevel:'', location:'', notes:'', addedDate:today() };
+export default function NewPartView({ onAdd, categories }) {
+  const blank = { name:'', sku:'', qty:'', unit:'', lowLevel:'', criticalLevel:'', location:'', notes:'', addedDate:today(), categoryId:'' };
   const [f, setF] = useState(blank);
   const [err, setErr] = useState(null);
   const set = k => e => setF(p=>({...p,[k]:e.target.value}));
@@ -24,6 +25,17 @@ export default function NewPartView({ onAdd }) {
         <ErrorBanner message={err} />
         <Field label="Part Name *"><Input placeholder="e.g. M6 Hex Bolt SS" value={f.name} onChange={set('name')} /></Field>
         <Field label="Part Number / SKU"><Input placeholder="e.g. ZP-BOLT-M6-001" value={f.sku} onChange={set('sku')} /></Field>
+        <Field label="Category">
+          <select value={f.categoryId} onChange={set('categoryId')}
+            style={{ width:'100%', padding:'10px 12px', background:C.surface2, border:`1px solid ${C.border}`,
+              borderRadius:8, color: f.categoryId ? C.text : C.muted, fontSize:14, outline:'none', boxSizing:'border-box',
+              fontFamily:'system-ui,sans-serif' }}>
+            <option value="">— Uncategorized —</option>
+            {categories.map(cat => (
+              <option key={cat.id} value={cat.id}>{cat.name}</option>
+            ))}
+          </select>
+        </Field>
         <div style={{ display:'flex', gap:9 }}>
           <Field label="Initial Qty *" style={{ flex:1 }}><Input type="number" min="0" placeholder="0" value={f.qty} onChange={set('qty')} /></Field>
           <Field label="Unit" style={{ flex:1 }}><Input placeholder="pcs / kg / m" value={f.unit} onChange={set('unit')} /></Field>
