@@ -132,4 +132,74 @@ setParts((partsData || []).map(dbToPart));
     await supabase.from('parts').update({
       name:           updated.name,
       sku:            updated.sku,
-      notes:          updated.notes,
+notes:          updated.notes,
+        low_level:      updated.lowLevel,
+        critical_level: updated.criticalLevel,
+        category_id:    updated.categoryId || null,
+      }).eq('id', updated.id);
+  }
+
+  async function confirmDelete() {
+    const id = deleteTarget.id;
+    setParts(ps => ps.filter(p => p.id !== id));
+    setTxns(ts => ts.filter(t => t.partId !== id));
+    setDeleteTarget(null);
+    await supabase.from('parts').delete().eq('id', id);
+  }
+
+  async function handleAddCategory(cat) {
+    setCategories(cs => [...cs, cat]);
+    await supabase.from('categories').insert(cat);
+  }
+
+  async function handleDeleteCategory(catId) {
+    setCategories(cs => cs.filter(c => c.id !== catId));
+    setParts(ps => ps.map(p => p.categoryId === catId ? {...p, categoryId: null} : p));
+    await supabase.from('categories').delete().eq('id', catId);
+    await supabase.from('parts').update({ category_id: null }).eq('category_id', catId);
+  }
+
+  async function handleRenameCategory(catId, newName) {
+    setCategories(cs => cs.map(c => c.id === catId ? {...c, name: newName} : c));
+    await supabase.from('categories').update({ name: newName }).eq('id', catId);
+  }
+
+  async function handleReorderCategories(reordered) {
+    setCategories(reordered);
+    await Promise.all(reordered.map(c => supabase.from('categories').update({ position: c.position }).eq('id', c.id)));
+  }
+
+  async function handleReorderParts(reorderedParts) {
+    setParts(ps => {
+      const ids = new Set(reorderedParts.map(p => p.id));
+      return [...ps.filter(p => !ids.has(p.id)), ...reorderedParts];
+    });
+    await Promise.all(reorderedParts.map(p => supabase.from('parts').update({ position: p.position }).eq('id', p.id)));
+  }
+
+  const q             = search.toLowerCase().trim();
+  const filtered      = parts.filter(p =>
+    p.name.toLowerCase().includes(q) ||
+    (p.sku      || '').toLowerCase().includes(q) ||
+    (p.location || '').toLowerCase().includes(q)
+  );
+  const lowParts      = parts.filter(p => getStatus(p) === 'low');
+  const criticalParts = parts.filter(p => getStatus(p) === 'critical');
+  const alertParts    = [...criticalParts.map(p=>({...p,_st:'critical'})), ...lowParts.map(p=>({...p,_st:'low'}))];
+  const totalUnits    = parts.reduce((s, p) => s + p.qty, 0);
+  const sortedTxns    = [...txns].sort((a,b) => b.date.localeCompare(a.date)||b.id.localeCompare(a.id));
+
+  if (loading) {
+    return (
+      <div style={{ background:C.bg, minHeight:'100vh', display:'flex', alignItems:'center',
+        justifyContent:'center', flexDirection:'column', gap:16, color:C.muted, fontFamily:'system-ui,sans-serif' }}>
+        <div style={{ fontSize:32 }}>📦</div>
+        <div style={{ fontSize:14 }}>Loading inventory…</div>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ background:C.bg, minHeight:'100vh', color:C.text, fontFamily:'system-ui,sans-serif', fontSize:15, paddingBottom:60 }}>
+      <div style={{ background:C.surface, borderBottom:`2px solid ${C.accent}`, padding:'12px 16px',
+        display:'flex', alignItems:'center', justifyContent:'space-between',
