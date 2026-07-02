@@ -38,7 +38,7 @@ export default function App() {
         supabase.from('transactions').select('*').order('date', { ascending: false }),
         supabase.from('categories').select('*').order('position', { ascending: true }),
       ]);
-setParts((partsData || []).map(dbToPart));
+      setParts((partsData || []).map(dbToPart));
       setTxns((txnsData  || []).map(dbToTxn));
       setCategories(catsData || []);
       setLoading(false);
@@ -132,11 +132,11 @@ setParts((partsData || []).map(dbToPart));
     await supabase.from('parts').update({
       name:           updated.name,
       sku:            updated.sku,
-notes:          updated.notes,
-        low_level:      updated.lowLevel,
-        critical_level: updated.criticalLevel,
-        category_id:    updated.categoryId || null,
-      }).eq('id', updated.id);
+      notes:          updated.notes,
+      low_level:      updated.lowLevel,
+      critical_level: updated.criticalLevel,
+      category_id:    updated.categoryId || null,
+    }).eq('id', updated.id);
   }
 
   async function confirmDelete() {
@@ -166,7 +166,9 @@ notes:          updated.notes,
 
   async function handleReorderCategories(reordered) {
     setCategories(reordered);
-    await Promise.all(reordered.map(c => supabase.from('categories').update({ position: c.position }).eq('id', c.id)));
+    await Promise.all(reordered.map(c =>
+      supabase.from('categories').update({ position: c.position }).eq('id', c.id)
+    ));
   }
 
   async function handleReorderParts(reorderedParts) {
@@ -174,7 +176,9 @@ notes:          updated.notes,
       const ids = new Set(reorderedParts.map(p => p.id));
       return [...ps.filter(p => !ids.has(p.id)), ...reorderedParts];
     });
-    await Promise.all(reorderedParts.map(p => supabase.from('parts').update({ position: p.position }).eq('id', p.id)));
+    await Promise.all(reorderedParts.map(p =>
+      supabase.from('parts').update({ position: p.position }).eq('id', p.id)
+    ));
   }
 
   const q             = search.toLowerCase().trim();
@@ -185,14 +189,20 @@ notes:          updated.notes,
   );
   const lowParts      = parts.filter(p => getStatus(p) === 'low');
   const criticalParts = parts.filter(p => getStatus(p) === 'critical');
-  const alertParts    = [...criticalParts.map(p=>({...p,_st:'critical'})), ...lowParts.map(p=>({...p,_st:'low'}))];
-  const totalUnits    = parts.reduce((s, p) => s + p.qty, 0);
-  const sortedTxns    = [...txns].sort((a,b) => b.date.localeCompare(a.date)||b.id.localeCompare(a.id));
+  const alertParts    = [
+    ...criticalParts.map(p => ({...p, _st:'critical'})),
+    ...lowParts.map(p      => ({...p, _st:'low'})),
+  ];
+  const totalUnits = parts.reduce((s, p) => s + p.qty, 0);
+  const sortedTxns = [...txns].sort((a,b) =>
+    b.date.localeCompare(a.date) || b.id.localeCompare(a.id)
+  );
 
   if (loading) {
     return (
       <div style={{ background:C.bg, minHeight:'100vh', display:'flex', alignItems:'center',
-        justifyContent:'center', flexDirection:'column', gap:16, color:C.muted, fontFamily:'system-ui,sans-serif' }}>
+        justifyContent:'center', flexDirection:'column', gap:16, color:C.muted,
+        fontFamily:'system-ui,sans-serif' }}>
         <div style={{ fontSize:32 }}>📦</div>
         <div style={{ fontSize:14 }}>Loading inventory…</div>
       </div>
@@ -200,6 +210,177 @@ notes:          updated.notes,
   }
 
   return (
-    <div style={{ background:C.bg, minHeight:'100vh', color:C.text, fontFamily:'system-ui,sans-serif', fontSize:15, paddingBottom:60 }}>
-      <div style={{ background:C.surface, borderBottom:`2px solid ${C.accent}`, padding:'12px 16px',
-        display:'flex', alignItems:'center', justifyContent:'space-between',
+    <div style={{ background:C.bg, minHeight:'100vh', color:C.text,
+      fontFamily:'system-ui,sans-serif', fontSize:15, paddingBottom:60 }}>
+
+      <div style={{ background:C.surface, borderBottom:`2px solid ${C.accent}`,
+        padding:'12px 16px', display:'flex', alignItems:'center',
+        justifyContent:'space-between', position:'sticky', top:0, zIndex:100 }}>
+        <div>
+          <div style={{ fontSize:17, fontWeight:800 }}>
+            Zadik <span style={{color:C.accent}}>Precision</span>
+          </div>
+          <div style={{ fontSize:9, letterSpacing:2, textTransform:'uppercase',
+            color:C.muted, marginTop:1 }}>LLC — Inventory Control</div>
+        </div>
+        <div style={{ fontFamily:'monospace', fontSize:11, color:C.muted, textAlign:'right' }}>
+          <div><b style={{color:C.accent}}>{parts.length}</b> parts</div>
+          <div><b style={{color:C.accent}}>{txns.length}</b> transactions</div>
+        </div>
+      </div>
+
+      <div style={{ display:'flex', background:C.surface, borderBottom:`1px solid ${C.border}`,
+        overflowX:'auto', position:'sticky', top:57, zIndex:99 }}>
+        {TABS.map(t => (
+          <div key={t.id} onClick={()=>setTab(t.id)}
+            style={{ flex:1, padding:'11px 8px', textAlign:'center', fontSize:11,
+              fontWeight:700, cursor:'pointer', whiteSpace:'nowrap', userSelect:'none',
+              color: tab===t.id ? C.accent : C.muted,
+              borderBottom: tab===t.id ? `2px solid ${C.accent}` : '2px solid transparent' }}>
+            {t.label}
+          </div>
+        ))}
+      </div>
+
+      {tab==='inventory' && (
+        <div>
+          <div style={{ padding:'14px 14px 0' }}>
+            <div style={{position:'relative', marginBottom:12}}>
+              <span style={{position:'absolute', left:11, top:'50%',
+                transform:'translateY(-50%)', color:C.muted, pointerEvents:'none'}}>🔍</span>
+              <input
+                style={{width:'100%', padding:'10px 12px 10px 34px', background:C.surface2,
+                  border:`1px solid ${C.border}`, borderRadius:8, color:C.text,
+                  fontSize:14, outline:'none', boxSizing:'border-box'}}
+                placeholder="Search by name, part #, or location…"
+                value={search}
+                onChange={e=>setSearch(e.target.value)}
+              />
+            </div>
+          </div>
+          {search.trim() ? (
+            <div style={{padding:'0 14px'}}>
+              {filtered.length===0
+                ? <EmptyState icon="📦">No results.</EmptyState>
+                : filtered.map(p => (
+                    <PartCard key={p.id} part={p}
+                      onAdd={p=>setTxModal({part:p,type:'add'})}
+                      onRemove={p=>setTxModal({part:p,type:'remove'})}
+                      onHistory={p=>setHistModal(p)}
+                      onDelete={p=>setDeleteTarget(p)}
+                      onEdit={p=>setEditPart(p)} />
+                  ))
+              }
+            </div>
+          ) : (
+            <CategoryView
+              categories={categories}
+              parts={parts}
+              onAddCategory={handleAddCategory}
+              onDeleteCategory={handleDeleteCategory}
+              onRenameCategory={handleRenameCategory}
+              onReorderCategories={handleReorderCategories}
+              onReorderParts={handleReorderParts}
+              onAdd={p=>setTxModal({part:p,type:'add'})}
+              onRemove={p=>setTxModal({part:p,type:'remove'})}
+              onHistory={p=>setHistModal(p)}
+              onDelete={p=>setDeleteTarget(p)}
+              onEdit={p=>setEditPart(p)}
+            />
+          )}
+        </div>
+      )}
+
+      {tab==='log' && (
+        <div style={{padding:14}}>
+          <SectionTitle>Transaction Log</SectionTitle>
+          {sortedTxns.length===0
+            ? <EmptyState icon="📋">No transactions yet.</EmptyState>
+            : sortedTxns.map(t => {
+                const isAdd = t.type==='add';
+                return (
+                  <div key={t.id} style={{display:'flex', alignItems:'center', gap:10,
+                    padding:'9px 0', borderBottom:`1px solid ${C.border}`}}>
+                    <div style={{width:30, height:30, borderRadius:7, display:'flex',
+                      alignItems:'center', justifyContent:'center', fontSize:14, flexShrink:0,
+                      background:isAdd?'rgba(61,224,138,.14)':'rgba(224,58,58,.14)'}}>
+                      {isAdd?'↑':'↓'}
+                    </div>
+                    <div style={{flex:1, minWidth:0}}>
+                      <div style={{fontSize:13, fontWeight:600, overflow:'hidden',
+                        textOverflow:'ellipsis', whiteSpace:'nowrap'}}>{t.partName}</div>
+                      <div style={{fontFamily:'monospace', fontSize:10, color:C.muted}}>
+                        {t.date}{t.reason?' · '+t.reason:''}
+                      </div>
+                    </div>
+                    <div style={{fontFamily:'monospace', fontWeight:500, fontSize:14,
+                      color:isAdd?C.green:C.red}}>{isAdd?'+':'-'}{t.qty}</div>
+                  </div>
+                );
+              })
+          }
+        </div>
+      )}
+
+      {tab==='alerts' && (
+        <div style={{padding:14}}>
+          <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:8, marginBottom:14}}>
+            {[
+              {val:parts.length,        lbl:'TOTAL PARTS', c:C.text},
+              {val:totalUnits,           lbl:'TOTAL UNITS', c:C.text},
+              {val:lowParts.length,      lbl:'LOW STOCK',   c:C.accent},
+              {val:criticalParts.length, lbl:'CRITICAL',    c:C.red},
+            ].map(({val,lbl,c}) => (
+              <div key={lbl} style={{background:C.surface, border:`1px solid ${C.border}`,
+                borderRadius:12, padding:12, textAlign:'center'}}>
+                <div style={{fontFamily:'monospace', fontSize:24, fontWeight:500, color:c}}>{val}</div>
+                <div style={{fontSize:10, color:C.muted, marginTop:2, letterSpacing:0.5}}>{lbl}</div>
+              </div>
+            ))}
+          </div>
+          <SectionTitle>Stock Alerts</SectionTitle>
+          {alertParts.length===0
+            ? <EmptyState icon="✅">All stock levels are healthy.</EmptyState>
+            : alertParts.map(p => (
+                <div key={p.id} style={{display:'flex', alignItems:'center', gap:9,
+                  padding:'9px 12px', marginBottom:7, borderRadius:8,
+                  background:p._st==='critical'?'rgba(224,58,58,.07)':'rgba(232,160,32,.07)',
+                  border:p._st==='critical'?'1px solid rgba(224,58,58,.2)':'1px solid rgba(232,160,32,.2)'}}>
+                  <span>{p._st==='critical'?'🔴':'🟡'}</span>
+                  <div style={{flex:1}}>
+                    <div style={{fontWeight:700, fontSize:13}}>{p.name}</div>
+                    <div style={{fontSize:11, color:C.muted, marginTop:1}}>
+                      {p.qty} {p.unit||'pcs'} · {p._st==='critical'?'CRITICAL':'LOW STOCK'}
+                    </div>
+                  </div>
+                  <button onClick={()=>setTxModal({part:p,type:'add'})}
+                    style={{padding:'6px 10px', background:'rgba(61,224,138,.13)', color:C.green,
+                      border:`1px solid rgba(61,224,138,.28)`, borderRadius:8, fontWeight:700,
+                      fontSize:11, cursor:'pointer', fontFamily:'system-ui,sans-serif'}}>
+                    Restock
+                  </button>
+                </div>
+              ))
+          }
+        </div>
+      )}
+
+      {tab==='addpart' && <NewPartView onAdd={handleAddPart} categories={categories} />}
+
+      {txModal   && <TxModal       part={txModal.part}  type={txModal.type} onClose={()=>setTxModal(null)}   onConfirm={handleTxConfirm} />}
+      {histModal && <HistModal     part={histModal}      txns={txns}         onClose={()=>setHistModal(null)} />}
+      {editPart  && <EditPartModal part={editPart}       categories={categories} onClose={()=>setEditPart(null)} onSave={handleEditPart} />}
+
+      {deleteTarget && (
+        <ConfirmDialog
+          title={`Delete "${deleteTarget.name}"?`}
+          message="This will permanently remove the part and all its transaction history. This cannot be undone."
+          confirmLabel="Yes, Delete"
+          danger
+          onConfirm={confirmDelete}
+          onCancel={()=>setDeleteTarget(null)}
+        />
+      )}
+    </div>
+  );
+}
