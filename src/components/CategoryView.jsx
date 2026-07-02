@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState } from 'react';
 import { C } from '../constants.js';
 import { uid } from '../utils.js';
 import PartCard from './PartCard.jsx';
@@ -13,11 +13,6 @@ export default function CategoryView({
   const [collapsed,   setCollapsed]   = useState({});
   const [editCat,     setEditCat]     = useState(null);
   const [editCatName, setEditCatName] = useState('');
-  const [dragCat,     setDragCat]     = useState(null);
-  const [dragPart,    setDragPart]    = useState(null);
-  const [overCat,     setOverCat]     = useState(null);
-  const [overPart,    setOverPart]    = useState(null);
-  const longPressTimer                = useRef(null);
 
   function toggleCollapse(id) {
     setCollapsed(c => ({ ...c, [id]: !c[id] }));
@@ -48,82 +43,45 @@ export default function CategoryView({
     setEditCatName('');
   }
 
-  function onCatDragStart(e, cat) { setDragCat(cat); e.dataTransfer.effectAllowed = 'move'; }
-  function onCatDragOver(e, cat) {
-    e.preventDefault(); setOverCat(cat.id);
-    if (!dragCat || dragCat.id === cat.id) return;
-    const r = [...categories];
-    const fi = r.findIndex(c => c.id === dragCat.id);
-    const ti = r.findIndex(c => c.id === cat.id);
-    r.splice(fi, 1); r.splice(ti, 0, dragCat);
-    onReorderCategories(r.map((c, i) => ({ ...c, position: i })));
+  // Move category up or down
+  function moveCat(cat, dir) {
+    const sorted = [...categories].sort((a, b) => a.position - b.position);
+    const idx = sorted.findIndex(c => c.id === cat.id);
+    const newIdx = idx + dir;
+    if (newIdx < 0 || newIdx >= sorted.length) return;
+    const reordered = [...sorted];
+    reordered.splice(idx, 1);
+    reordered.splice(newIdx, 0, cat);
+    onReorderCategories(reordered.map((c, i) => ({ ...c, position: i })));
   }
-  function onCatDragEnd() { setDragCat(null); setOverCat(null); }
 
-  function onPartDragStart(e, part) { setDragPart(part); e.dataTransfer.effectAllowed = 'move'; }
-  function onPartDragOver(e, part, catId) {
-    e.preventDefault(); setOverPart(part.id);
-    if (!dragPart || dragPart.id === part.id) return;
-    const cp = parts.filter(p => (p.categoryId||null) === (catId||null));
-    const fi = cp.findIndex(p => p.id === dragPart.id);
-    const ti = cp.findIndex(p => p.id === part.id);
-    if (fi === -1) return;
-    cp.splice(fi, 1); cp.splice(ti, 0, dragPart);
-    onReorderParts(cp.map((p, i) => ({ ...p, position: i })));
+  // Move part up or down within its category
+  function movePart(part, dir, catId) {
+    const catParts = parts
+      .filter(p => (p.categoryId || null) === (catId || null))
+      .sort((a, b) => (a.position||0) - (b.position||0));
+    const idx = catParts.findIndex(p => p.id === part.id);
+    const newIdx = idx + dir;
+    if (newIdx < 0 || newIdx >= catParts.length) return;
+    const reordered = [...catParts];
+    reordered.splice(idx, 1);
+    reordered.splice(newIdx, 0, part);
+    onReorderParts(reordered.map((p, i) => ({ ...p, position: i })));
   }
-  function onPartDragEnd() { setDragPart(null); setOverPart(null); }
-
-  function onTouchStartCat(e, cat) {
-    longPressTimer.current = setTimeout(() => {
-      setDragCat(cat);
-      navigator.vibrate && navigator.vibrate(40);
-    }, 500);
-  }
-  function onTouchMoveCat(e) {
-    if (!dragCat) { clearTimeout(longPressTimer.current); return; }
-    e.preventDefault();
-    const t = e.touches[0];
-    const el = document.elementFromPoint(t.clientX, t.clientY)?.closest('[data-catid]');
-    if (el) {
-      const target = categories.find(c => c.id === el.dataset.catid);
-      if (target && target.id !== dragCat.id) {
-        const r = [...categories];
-        const fi = r.findIndex(c => c.id === dragCat.id);
-        const ti = r.findIndex(c => c.id === target.id);
-        r.splice(fi, 1); r.splice(ti, 0, dragCat);
-        onReorderCategories(r.map((c, i) => ({ ...c, position: i })));
-      }
-    }
-  }
-  function onTouchEndCat() { clearTimeout(longPressTimer.current); setDragCat(null); }
-
-  function onTouchStartPart(e, part) {
-    longPressTimer.current = setTimeout(() => {
-      setDragPart(part);
-      navigator.vibrate && navigator.vibrate(40);
-    }, 500);
-  }
-  function onTouchMovePart(e, catId) {
-    if (!dragPart) { clearTimeout(longPressTimer.current); return; }
-    e.preventDefault();
-    const t = e.touches[0];
-    const el = document.elementFromPoint(t.clientX, t.clientY)?.closest('[data-partid]');
-    if (el) {
-      const cp = parts.filter(p => (p.categoryId||null) === (catId||null));
-      const target = cp.find(p => p.id === el.dataset.partid);
-      if (target && target.id !== dragPart.id) {
-        const fi = cp.findIndex(p => p.id === dragPart.id);
-        const ti = cp.findIndex(p => p.id === target.id);
-        if (fi === -1) return;
-        cp.splice(fi, 1); cp.splice(ti, 0, dragPart);
-        onReorderParts(cp.map((p, i) => ({ ...p, position: i })));
-      }
-    }
-  }
-  function onTouchEndPart() { clearTimeout(longPressTimer.current); setDragPart(null); }
 
   const sortedCats    = [...categories].sort((a, b) => a.position - b.position);
-  const uncategorized = parts.filter(p => !p.categoryId).sort((a, b) => (a.position||0) - (b.position||0));
+  const uncategorized = parts
+    .filter(p => !p.categoryId)
+    .sort((a, b) => (a.position||0) - (b.position||0));
+
+  const arrowBtn = (label, onClick) => (
+    <button onClick={onClick}
+      style={{ background:C.surface2, border:`1px solid ${C.border}`, borderRadius:6,
+        padding:'3px 7px', color:C.muted, fontSize:13, cursor:'pointer',
+        fontFamily:'system-ui,sans-serif', lineHeight:1 }}>
+      {label}
+    </button>
+  );
 
   function renderParts(catParts, catId) {
     if (catParts.length === 0) {
@@ -133,27 +91,23 @@ export default function CategoryView({
         </div>
       );
     }
-    return catParts.map(p => (
-      <div key={p.id} data-partid={p.id} draggable
-        onDragStart={e => onPartDragStart(e, p)}
-        onDragOver={e => onPartDragOver(e, p, catId)}
-        onDragEnd={onPartDragEnd}
-        onTouchStart={e => onTouchStartPart(e, p)}
-        onTouchMove={e => onTouchMovePart(e, catId)}
-        onTouchEnd={onTouchEndPart}
-        style={{
-          opacity: dragPart?.id === p.id ? 0.4 : 1,
-          outline: overPart === p.id && dragPart?.id !== p.id ? `2px dashed ${C.accent}` : 'none',
-          borderRadius: 12,
-        }}>
-        <PartCard
-          part={p}
-          onAdd={onAdd}
-          onRemove={onRemove}
-          onHistory={onHistory}
-          onDelete={onDelete}
-          onEdit={onEdit}
-        />
+    return catParts.map((p, idx) => (
+      <div key={p.id} style={{ position:'relative' }}>
+        <div style={{ position:'absolute', top:14, right:14, display:'flex',
+          flexDirection:'column', gap:3, zIndex:10 }}>
+          {idx > 0 && arrowBtn('▲', () => movePart(p, -1, catId))}
+          {idx < catParts.length - 1 && arrowBtn('▼', () => movePart(p, 1, catId))}
+        </div>
+        <div style={{ paddingRight: 36 }}>
+          <PartCard
+            part={p}
+            onAdd={onAdd}
+            onRemove={onRemove}
+            onHistory={onHistory}
+            onDelete={onDelete}
+            onEdit={onEdit}
+          />
+        </div>
       </div>
     ));
   }
@@ -238,37 +192,31 @@ export default function CategoryView({
       )}
 
       {/* Categories */}
-      {sortedCats.map(cat => {
+      {sortedCats.map((cat, catIdx) => {
         const catParts = parts
           .filter(p => p.categoryId === cat.id)
           .sort((a, b) => (a.position||0) - (b.position||0));
-        const open     = isOpen(cat.id);
-        const dragging = dragCat?.id === cat.id;
+        const open = isOpen(cat.id);
         return (
-          <div key={cat.id} data-catid={cat.id} draggable
-            onDragStart={e => onCatDragStart(e, cat)}
-            onDragOver={e => onCatDragOver(e, cat)}
-            onDragEnd={onCatDragEnd}
-            onTouchStart={e => onTouchStartCat(e, cat)}
-            onTouchMove={onTouchMoveCat}
-            onTouchEnd={onTouchEndCat}
-            style={{
-              marginBottom: 12,
-              opacity: dragging ? 0.4 : 1,
-              outline: overCat === cat.id && !dragging ? `2px dashed ${C.accent}` : 'none',
-              borderRadius: 12,
-            }}>
+          <div key={cat.id} style={{ marginBottom:12 }}>
             <div style={{ background:C.surface, border:`1px solid ${C.border}`,
               borderRadius:12, overflow:'hidden' }}>
               <div style={{ display:'flex', alignItems:'center', padding:'12px 14px',
                 borderBottom: open ? `1px solid ${C.border}` : 'none', userSelect:'none' }}>
-                <span style={{ fontSize:16, marginRight:10, color:C.muted }}>☰</span>
+
+                {/* Up/Down arrows for category */}
+                <div style={{ display:'flex', flexDirection:'column', gap:3, marginRight:10 }}>
+                  {catIdx > 0 && arrowBtn('▲', () => moveCat(cat, -1))}
+                  {catIdx < sortedCats.length - 1 && arrowBtn('▼', () => moveCat(cat, 1))}
+                </div>
+
                 <div onClick={() => toggleCollapse(cat.id)} style={{ flex:1, cursor:'pointer' }}>
                   <div style={{ fontSize:14, fontWeight:800, color:C.text }}>{cat.name}</div>
                   <div style={{ fontSize:11, color:C.muted, marginTop:1 }}>
                     {catParts.length} part{catParts.length !== 1 ? 's' : ''}
                   </div>
                 </div>
+
                 <div style={{ display:'flex', gap:8, alignItems:'center', marginLeft:8 }}>
                   <button onClick={e => startEditCat(e, cat)}
                     style={{ background:C.surface2, border:`1px solid ${C.border}`,
