@@ -8,7 +8,7 @@ const STATUS_COLORS = {
 };
 const BAR_COLORS = { ok:C.green, low:C.accent, critical:C.red };
 
-export default function PartCard({ part, onAdd, onRemove, onHistory, onDelete }) {
+export default function PartCard({ part, onAdd, onRemove, onHistory, onDelete, onEdit }) {
   const status = getStatus(part);
   const max = Math.max(part.qty, (part.lowLevel||0)*2, 100);
   const pct = Math.min(100, Math.round((part.qty/max)*100));
@@ -19,7 +19,12 @@ export default function PartCard({ part, onAdd, onRemove, onHistory, onDelete })
     <div style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:12, padding:14, marginBottom:10 }}>
       <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:8 }}>
         <div style={{ flex:1, minWidth:0, paddingRight:10 }}>
-          <div style={{ fontSize:15, fontWeight:700 }}>{part.name}</div>
+          <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+            <div style={{ fontSize:15, fontWeight:700 }}>{part.name}</div>
+            <button onClick={() => onEdit(part)}
+              style={{ background:'none', border:'none', color:C.muted, cursor:'pointer', fontSize:13, padding:2, lineHeight:1 }}
+              title="Edit part">✏️</button>
+          </div>
           {sub && <div style={{ fontFamily:'monospace', fontSize:10, color:C.muted, marginTop:2 }}>{sub}</div>}
         </div>
         <div style={{ textAlign:'center', flexShrink:0 }}>
