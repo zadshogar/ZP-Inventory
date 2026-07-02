@@ -19,16 +19,7 @@ export default function PartCard({ part, onAdd, onRemove, onHistory, onDelete, o
     <div style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:12, padding:14, marginBottom:10 }}>
       <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:8 }}>
         <div style={{ flex:1, minWidth:0, paddingRight:10 }}>
-          <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' }}>
-            <div style={{ fontSize:15, fontWeight:700 }}>{part.name}</div>
-            <button
-              onClick={() => onEdit(part)}
-              style={{ background:C.surface2, border:`1px solid ${C.border}`, borderRadius:6,
-                color:C.accent, cursor:'pointer', fontSize:11, padding:'2px 8px',
-                fontWeight:700, fontFamily:'system-ui,sans-serif', lineHeight:'18px' }}>
-              EDIT
-            </button>
-          </div>
+          <div style={{ fontSize:15, fontWeight:700 }}>{part.name}</div>
           {sub && <div style={{ fontFamily:'monospace', fontSize:10, color:C.muted, marginTop:2 }}>{sub}</div>}
         </div>
         <div style={{ textAlign:'center', flexShrink:0 }}>
@@ -45,8 +36,9 @@ export default function PartCard({ part, onAdd, onRemove, onHistory, onDelete, o
       <div style={{ display:'flex', gap:7, marginTop:10 }}>
         <button style={{ ...btn, flex:1, background:'rgba(224,58,58,.13)', color:C.red,   border:`1px solid rgba(224,58,58,.28)` }} onClick={()=>onRemove(part)}>− Remove</button>
         <button style={{ ...btn, flex:1, background:'rgba(61,224,138,.13)', color:C.green, border:`1px solid rgba(61,224,138,.28)` }} onClick={()=>onAdd(part)}>+ Add</button>
+        <button style={{ ...btn, flex:1, background:`rgba(232,160,32,.13)`, color:C.accent, border:`1px solid rgba(232,160,32,.28)` }} onClick={()=>onEdit(part)}>Edit</button>
         <button style={{ ...btn, flex:1, background:C.surface2, color:C.muted, border:`1px solid ${C.border}` }} onClick={()=>onHistory(part)}>📋</button>
-        <button style={{ ...btn, flex:'none', width:36, background:'rgba(224,58,58,.1)', color:C.red, border:`1px solid rgba(224,58,58,.3)` }} onClick={()=>onDelete(part)} title="Delete part">🗑</button>
+        <button style={{ ...btn, flex:'none', width:36, background:'rgba(224,58,58,.1)', color:C.red, border:`1px solid rgba(224,58,58,.3)` }} onClick={()=>onDelete(part)}>🗑</button>
       </div>
     </div>
   );
