@@ -15,14 +15,23 @@ export default function PartCard({ part, onAdd, onRemove, onHistory, onDelete, o
   const sub = [part.sku, part.location].filter(Boolean).join(' · ');
   const btn = { padding:9, border:'none', borderRadius:8, fontWeight:700, fontSize:12, cursor:'pointer', fontFamily:'system-ui,sans-serif' };
 
+  function handleEdit(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    onEdit(part);
+  }
+
   return (
     <div style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:12, padding:14, marginBottom:10 }}>
       <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:8 }}>
         <div style={{ flex:1, minWidth:0, paddingRight:10 }}>
           <div style={{ display:'flex', alignItems:'center', gap:8 }}>
             <div style={{ fontSize:15, fontWeight:700 }}>{part.name}</div>
-            <button onClick={() => onEdit(part)}
-              style={{ background:'none', border:'none', color:C.muted, cursor:'pointer', fontSize:13, padding:2, lineHeight:1 }}
+            <button
+              onClick={handleEdit}
+              onTouchEnd={handleEdit}
+              style={{ background:'none', border:'none', color:C.muted, cursor:'pointer',
+                fontSize:13, padding:4, lineHeight:1, WebkitTapHighlightColor:'transparent' }}
               title="Edit part">✏️</button>
           </div>
           {sub && <div style={{ fontFamily:'monospace', fontSize:10, color:C.muted, marginTop:2 }}>{sub}</div>}
